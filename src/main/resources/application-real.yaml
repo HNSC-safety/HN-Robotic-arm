@@ -1,0 +1,21 @@
+# ======================================================================
+# 真实算法端 profile（profile: real）
+# ======================================================================
+#
+# 说明：默认配置 `application.yaml` **本来就是默认连真实算法端**，
+#       所以本文件只是把它再显式声明一遍 —— 好处是：
+#
+#       · 命令行/intellij 里写 "real" 就能表达"我要打真机"，语义清晰
+#       · 以后如果默认配置改成别的，本文件仍然保证 "real" = 真机
+#
+# 启动方式：
+#   mvn spring-boot:run -Dspring-boot.run.profiles=real
+#   IntelliJ: Active profiles 填 real
+#
+# ⚠️ 暗号（AlgHandle / SMTEvent）和地址在 application.yaml 里已经配好了，
+#    本文件只覆盖开关，不重复维护 —— 避免两份配置各改各的。
+#
+ice:
+  test:
+    # true = 默认连真实 C# 算法端（不启动内置假算法端）
+    default-real: true

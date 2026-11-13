@@ -1,0 +1,37 @@
+# ============== 离线假算法端配置（profile: mock） ==============
+#
+# 启动方式：
+#   mvn spring-boot:run -Dspring-boot.run.profiles=mock
+#   IntelliJ: Run/Debug Configuration → Active profiles 填 mock
+#
+# 用途：**没有 C# 算法端环境时也能跑通完整链路**。
+# 应用启动时自己起一个 ICE 服务端监听 10000，
+# 机械臂指令发给它，它再反向回调我们 —— 全程闭环，不用装任何 C# 程序。
+#
+# ⚠️ 本文件只需要改一个开关。
+#    暗号（AlgHandle / SMTEvent）、地址、端口全部沿用 application.yaml，
+#    这样切环境时**不用改任何业务代码**。
+#
+# 💡 更快的临时切换方式（优先级高于任何 yaml）：
+#    -Dice.test.default-real=false     # 默认连假端
+#    -Dice.test.default-real=true      # 默认连真端
+server:
+  port: 9988
+
+ice:
+  test:
+    # false = 默认连内置假算法端（应用自己起 10000）
+    default-real: false
+    # 假算法端监听端口（跟 ice.alg.port 一致即可）
+    mock-port: 10000
+    # 假端反向回调的目标 host：留空 = 127.0.0.1（假端和我们同机）
+    mock-callback-host:
+    # 假端反向回调的目标端口：留空 = 跟随 ice.local.port
+    mock-callback-port:
+    # 假端注册 servant 的暗号：留空 = 跟随 ice.alg.identity
+    mock-identity:
+
+logging:
+  level:
+    com.hbirdedge.hnroboticarm: INFO
+    QNEdge: INFO

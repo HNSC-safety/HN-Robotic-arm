@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.2</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+    <groupId>com.hBirdEdge</groupId>
+    <artifactId>HN-Robotic-arm</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>HN-Robotic-arm</name>
+    <description>HN-Robotic-arm</description>
+    <url/>
+    <licenses>
+        <license/>
+    </licenses>
+    <developers>
+        <developer/>
+    </developers>
+    <scm>
+        <connection/>
+        <developerConnection/>
+        <tag/>
+        <url/>
+    </scm>
+    <properties>
+        <java.version>17</java.version>
+        <!-- 桩代码由 slice2java 3.6.4 生成，runtime 必须同版本（包名 Ice.* 而非 com.zeroc.Ice.*） -->
+        <ice.version>3.6.4</ice.version>
+        <!--
+            接口文档：Knife4j
+            ⚠️ 必须用 **Boot4 专用 starter**（groupId com.baizhukui）。
+               本项目是 Spring Boot 4.1.2 —— Boot3 的 jakarta starter 跑不起来
+               （springdoc 2.x 依赖 Boot3 的类，Boot4 下会 NoClassDefFoundError）。
+               兼容矩阵：https://knife4jnext.com/reference/compatibility
+        -->
+        <knife4j.version>5.8.2</knife4j.version>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- 接口文档（Knife4j UI + OpenAPI 3.1）—— 访问 http://localhost:9988/doc.html -->
+        <dependency>
+            <groupId>com.baizhukui</groupId>
+            <artifactId>knife4j-openapi3-boot4-spring-boot-starter</artifactId>
+            <version>${knife4j.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.zeroc</groupId>
+            <artifactId>ice</artifactId>
+            <version>${ice.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- @ParameterizedTest / @CsvSource / @EnumSource -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-params</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!-- 运行模拟算法端：mvn exec:java -Dexec.mainClass=com.hbirdedge.hnroboticarm.mock.MockAlgorithmServer -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <configuration>
+                    <mainClass>com.hbirdedge.hnroboticarm.mock.MockAlgorithmServer</mainClass>
+                </configuration>
+            </plugin>
+
+            <!--
+                测试配置：
+                1. forkCount=1 / reuseForks=true —— 两个测试类共享同一个 JVM。
+                   这点很重要：内置假算法端和回调 adapter 都是 JVM 级单例
+                   （监听 10000 / 10001），多 fork 会互相抢端口。
+                2. 限制堆大小 —— 开发机内存紧张时防止 OOM。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <forkCount>1</forkCount>
+                    <reuseForks>true</reuseForks>
+                    <argLine>-Xmx512m -Xss1m</argLine>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

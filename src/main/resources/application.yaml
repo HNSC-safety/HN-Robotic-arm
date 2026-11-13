@@ -1,0 +1,164 @@
+server:
+  port: 9988
+
+spring:
+  application:
+    name: HN-Robotic-arm
+
+# ============== ICE 配置 ==============
+# 参照 hBird-edge-ice 项目的结构：按「方向」分，不按「接口」分。
+#
+#   ice.alg   —— 算法端（ICE 服务端，C# HNServer）。我们主动连它。
+#   ice.local —— 本地回调。我们起 adapter，等算法端反向回调我们。
+#
+# 关键约定：**一个方向只有一个暗号**。
+# 一个 servant 可以同时实现多个 Slice 接口（multi-interface），
+# 对端用 stringToProxy("暗号:...") 拿到代理后，checkedCast 到任意接口都行。
+# 所以本地只注册 1 个 servant，算法端也只需要认这 1 个暗号。
+#
+# ⚠️ 这份文件是「**默认连真实算法端**」配置 —— 不传参数时连现场那台 C# 算法端。
+#    想离线跑（不装 C# 程序、克隆下来就能跑能测），用 profile：
+#        --spring.profiles.active=mock
+#    （见 application-mock.yaml）
+#
+#    想在 IntelliJ 里临时切，加一个 VM option 就够：
+#        -Dice.test.default-real=false
+ice:
+  alg:
+    # 算法端地址 —— 现场那台跑 HNServer.exe 的机器
+    host: 192.168.0.103
+    port: 10000
+    # 算法端 servant 的暗号。必须与算法端 stringToIdentity(...) 一字不差。
+    # ⚠️ 现场 C# 端用的是 AlgHandle（不是 QNEArmControl）。（我们→算法端）
+    identity: AlgHandle
+    # 连不上算法端时，等待它上线的最长秒数。
+    #
+    # ⚠️ 现场联调必备：我们先起、算法端后起（或算法端正在重启）时，
+    #    第一次探测拿到"连接被拒绝"只代表"这一刻还没起"，不代表以后都连不上。
+    #    这个值 > 0 时，连接层失败会在窗口内反复重试，连上才返回。
+    #
+    #    0 = 不等待，一次失败立刻返回（CI / 单元测试用）。
+    #    临时打开（不用改文件）： -Dice.alg.connect-wait-seconds=30
+    #
+    #    ⚠️ 这里默认给 30 —— 业务接口 /api/arm/move 固定走真实算法端，
+    #    现场联调是我们先起、算法端后起。没有等待窗口的话，
+    #    第一次"连接被拒绝"就直接 502，人还没来得及启动算法端就挂了。
+    connect-wait-seconds: 30
+  local:
+    # 本地回调端口。算法端要反向连到这里，IP 由算法端配置决定。
+    host: 192.168.0.209
+    port: 10001
+    # 本地 servant 的暗号。
+    # ⚠️ 必须是 SMTEvent —— 算法端 C# 里硬编码了
+    #    stringToProxy("SMTEvent:default -h <ip> -p 10001")，改名字它就找不到我们。（算法端→我们回调）
+    identity: SMTEvent
+  service:
+    enabled: true
+
+  # ============== 机械臂清单（"我控制的是哪条臂"） ==============
+  #
+  # ⚠️ 为什么要这个？
+  #   QNEdge.ice 里 MoveTask(EDirection ed, int nSpeed) **没有任何"哪条臂"的字段**
+  #   —— 协议固定，不能改。所以"控制的是哪条臂"只有两个表达渠道：
+  #
+  #   ① 选端点：每条臂配一个 host:port:identity，调用时用 arm=<臂名> 选
+  #      → 适用：一台算法端管一条臂（多台算法端）
+  #
+  #   ② Ice Context：臂名以 strArmID 放进请求上下文，对端从 Current.ctx 读
+  #      → 适用：一台算法端管多条臂
+  #      → C# 端取法：current.ctx["strArmID"]
+  #      → **不用重新生成 C# 代码**
+  #
+  # 两种方式可以同时用：arm 先决定"连哪台"，同时把臂名塞进 Context。
+  #
+  # ⚠️ 清单为空（默认）= 单臂场景：
+  #    arm 参数仍然可用，此时 arm 只是"标签"，端点统一用 ice.alg。
+  #    清单非空时，传入未配置的臂名会被**拒绝**（400），
+  #    避免打错字却悄悄打到默认臂 —— 消音按错机械臂是消防事故。
+  #
+  # 调用方式：
+  #   REST： POST /api/arm/move?direction=Down&speed=5&arm=arm-a
+  #          POST /api/ice/test/arm/move?direction=Down&speed=5&real=true&arm=arm-a
+  #   测试： IceEndToEndTests#ArmIdentification
+  arms:
+    # arm-a:
+    #   host: 192.168.0.103
+    #   port: 10000
+    #   identity: AlgHandle
+    #   description: 1 号琴台机械臂
+    # arm-b:
+    #   host: 192.168.0.104
+    #   port: 10000
+    #   identity: AlgHandle
+    #   description: 2 号琴台机械臂
+
+  # 默认机械臂名 —— 调用时不传 arm 就用它。
+  # 留空 = 用 ice.alg 的端点（单臂场景）。
+  default-arm:
+
+  # ============== 测试模式（决定"不传参数时"默认连谁） ==============
+  #
+  # default-real = false → 默认连【内置假算法端】
+  #                    应用启动时自己起一个 ICE 服务端（监听 ice.test.mock-port），
+  #                    机械臂指令发给它，它再反向回调我们。
+  #                    好处：不需要装任何 C# 程序，克隆下来就能跑、能测。
+  #
+  # default-real = true  → 默认连【真实 C# 算法端】
+  #                    连 ice.alg.host:ice.alg.port 上跑着的 HNServer。
+  #                    现场验收时用这个。
+  #
+  # ⚠️ 这只是**默认值**。真正的开关是每次调用的参数：
+  #    REST： /api/ice/test/arm/move?real=true|false
+  #    测试： IceEndToEndTests 里的 real 参数
+  #    两种模式下 REST 接口完全一样，区别只是"对面是谁"。
+  test:
+    # true = 默认连真实 C# 算法端；false = 默认连内置假算法端
+    default-real: false
+    # 假算法端监听端口（跟 ice.alg.port 一致即可）
+    mock-port: 10000
+    # 假算法端反向回调的目标端口。留空 = 跟随 ice.local.port
+    mock-callback-port:
+    # 假算法端反向回调的目标 host。留空 = 127.0.0.1（假端和我们在同一台机器）
+    mock-callback-host:
+    # 假算法端注册 servant 的暗号。留空 = 跟随 ice.alg.identity
+    mock-identity:
+
+logging:
+  level:
+    com.hbirdedge.hnroboticarm: INFO
+    QNEdge: INFO
+
+# ============== 接口文档（Knife4j） ==============
+#
+# 访问地址：http://localhost:9988/doc.html
+#   （本项目 HTTP 端口默认 9988；测试类是 9987）
+#
+# ⚠️ 为什么用 springdoc 而不是纯 Knife4j 配置：
+#    Boot 4 下 Knife4j 走的是 springdoc-openapi 3.x，配置项前缀是 springdoc。
+#
+springdoc:
+  api-docs:
+    # OpenAPI 3.1 输出（Boot 4 默认就是 3.1，这里显式写出来更清楚）
+    version: OPENAPI_3_1
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  # 只扫我们自己的包 —— 别把 Ice 桩代码（QNEdge.*）也扫进来
+  packages-to-scan: com.hbirdedge.hnroboticarm
+  paths-to-match: /api/**
+  writer-with-order-by-keys: true
+
+knife4j:
+  enable: true
+  setting:
+    # 中文界面
+    language: zh_cn
+    enable-footer: false
+    enable-footer-custom: true
+    footer-custom-content: "HN-Robotic-arm · 机械臂 ICE 控制器"
+    # 侧边栏展开分组，便于现场快速找接口
+    enable-open-api: false
+    enable-group: true
+
